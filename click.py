@@ -7,20 +7,26 @@ elements = []
 clickables = {}
 segmentsRef = {}
 gameTexts = {}
-
+gGrille = None
 squareSide = 20
 distanceBetweenSquares = 60
 padding = 40
+height = 0
+width = 0
+indices = []
+etat = {}
+
+won = False
 def createButton(x = 0, y = 0, width=150, height=50, content="", fontSize = 12):
     global elements
-    a = rectangle(x, y, x + width, y + height)
+    rectxc = rectangle(x, y, x + width, y + height)
     
     textX = int((x + x + width ) / 2)
     textY =int((y + y + height ) / 2)
 
     a =  texte(textX, textY,content, ancrage='center', taille=fontSize)
     elements.append(a)
-    return {"x": {"min": x, "max": x + width}, "y": {"min": y, "max": y + height} }
+    return {"x": {"min": x, "max": x + width}, "y": {"min": y, "max": y + height}, 'rect': rectxc, 'txt': a }
 
 
 def clearScreen():
@@ -57,31 +63,13 @@ def handleClick(coords):
         clearScreen()
         grilleScreen()
     elif (view == "grilleSelection"):
-        clearScreen()
-        StartGame(event)
+        if event != None:
+            global gGrille
+            gGrille = event
+            clearScreen()
+            StartGame(event)
         pass
-height = 0
-width = 0
-indices = []
-etat = {}
-def lireJeu(filename = ""):
-    global indices, height, width
-    with open(filename) as file:
-        lines = [line.rstrip('\n') for line in file]
-    print(lines)
-    
-    if len(list(set([len(line) for line in lines]))) != 1:
-        raise BaseException("lines length are not consistent")
 
-    
-    if False in [True if re.match(r'^([0123_])+$', line) else False  for line in lines]:
-        raise BaseException("Invalid Characters detected")
-
-    indices = [[int(letter) if letter.isdigit() else None for letter in list(line)] for line in lines]
-    height = len(lines)
-    width = len(lines[0])
-    
-    pass
 
 def createBox():
     pass
@@ -100,7 +88,16 @@ def verifyTuplesOrder(segment):
 
 
 def statut_case(indices, etat, case):
+    maxRow = len(indices)
+    maxColumn = len(indices[0])
+
+
     i, j = case
+
+    if i > maxRow - 1:
+        return
+    if j > maxColumn - 1:
+        return
     indice = indices[i][j]
     if indice == None:
         return None
@@ -156,14 +153,134 @@ def est_vierge(etat, segment):
         return True
     return False
 
+def doSolveFunction():
+    print("pressed solve button")
 
+def getSommetSegments(sommet):
+        i, j = sommet
+        global indices
+
+        maxRow = len(indices)
+        maxColumn = len(indices[0])
+
+        candidates = [
+            ((i, j), (i, j + 1)),
+            ((i, j), (i + 1, j)),
+            ((i,j), (i, j - 1)),
+            ((i,j), (i - 1, j))
+        ]
+        if i == 0:
+            candidates.remove(((i,j), (i - 1, j)))
+        if i == maxRow:
+            candidates.remove(((i, j), (i + 1, j)))
+        
+        if j == 0:
+            candidates.remove(((i,j), (i, j - 1)))
+
+        if j == maxColumn:
+            candidates.remove(((i, j), (i, j + 1)))
+        candidates = [verifyTuplesOrder(candidate) for candidate in candidates]
+        return candidates
+            
+def VerifyLockedPremises():
+    global etat
+    global indices
+
+
+    allSegments = [segment for segment,status in etat.items() if status == 1]
+    if len(allSegments) == 0:
+        print("no lines")
+        return False
+    firstSegment = allSegments[0]
+    firstSommet = firstSegment[0]
+    res = thatFunc(previousSommet=firstSommet, segment=firstSegment, verifiedsegments=[], allSegments=allSegments)
+    print("res for verifylocked :" + str(res))
+    return res
+
+
+def verifyAllCasesGreen():
+    global indices
+    global etat
+    for i, val in enumerate(indices):
+        for j, case in enumerate(val):
+            if case == None:
+                continue
+            if statut_case(indices, etat, (i, j)) != 0:
+                print("case :" + str((i, j)) + " is not green")
+                return False
+    print("all cases green")
+    return True
+def thatFunc(previousSommet=(), segment=((), ()), verifiedsegments=[], allSegments=[]):
+    if segment in verifiedsegments:
+        print("lngth verfiedsegments = " + str(len(verifiedsegments)) + " all segments length = " + str(len(allSegments)))
+        if len(verifiedsegments) != len(allSegments):
+            print("lose end not included in premises")
+            return False
+        
+        return True
+
+    segment = verifyTuplesOrder(segment)
+    segmentList = list(segment)
+    segmentList.remove(previousSommet)
+    nextSommet = segmentList[0]
+    possibleSegments = getSommetSegments(nextSommet)
+
+    possibleSegments.remove(segment)
+    candidateSegments = possibleSegments
+    matchs = []
+    for candidate in candidateSegments:
+        res = etat.get(candidate, False)
+        if res == 1:
+            matchs.append(candidate)
+
+    if len(matchs) == 0:
+        print("premises not locked at " + str(nextSommet))
+        return False
+    elif len(matchs) > 1:
+        print("premises have loss ends")
+        return False
+    elif len(matchs) == 1:
+        print("perfect going for next segment")
+        verifiedsegments.append(segment)
+        return thatFunc(previousSommet=nextSommet, segment=matchs[0], verifiedsegments=verifiedsegments, allSegments=allSegments)
 def handleGameClick(mouse, coords):
     global etat
     global indices
     global squareSide
     global distanceBetweenSquares
     global padding
+    global clickables
     x, y = coords
+    bsolve = clickables.get('solve', False)
+    if bsolve and bsolve['x']['min'] <= x and x <= bsolve['x']['max'] and bsolve['y']['min'] <= y and bsolve['y']['max']:
+        doSolveFunction()
+        return
+
+    def resetGame():
+        global gGrille
+        clearScreen()
+        StartGame(gGrille)
+
+    def exitGame():
+        exit()
+
+    def newGame():
+        clearScreen()
+        grilleScreen()
+        pass
+
+    actions = {
+        'reset': resetGame,
+        'exit': exitGame,
+        'new': newGame
+    }
+
+    if 'reset' in clickables:
+        for btn, data in clickables.items():
+            if data and data['x']['min'] <= x and x <= data['x']['max'] and data['y']['min'] <= y and data['y']['max']:
+                print("clicked " + btn)
+                actions[btn]()
+                return
     print("for :" + str(coords))
 
     i = math.ceil((y - padding) / (squareSide + distanceBetweenSquares)) - 1
@@ -171,8 +288,8 @@ def handleGameClick(mouse, coords):
 
     row = len(indices)
     column = len(indices[0])
-    print(row)
-    print(column)
+    print("max row : " + str(row))
+    print("max column :" + str(column))
     if i > row  or i < 0:
         return
     if j > column  or j < 0:
@@ -347,115 +464,78 @@ def handleGameClick(mouse, coords):
     verifyAllCasesGreen()
 
     if VerifyLockedPremises() and verifyAllCasesGreen():
+        
+        print(clickables['solve'])
+        efface(clickables['solve']['rect'])
+        efface(clickables['solve']['txt'])
+        del clickables['solve']
+        row = len(indices)
+        column = len(indices[0])
+
+
+        
+        width = row * (squareSide + distanceBetweenSquares) + padding  * 3
+        height = column * (squareSide + distanceBetweenSquares) + padding  * 3 + 80
+
+        centerX = width / 2
+        bwidth = 100
+        bcenterX = bwidth / 2
+        bheight = 50
+        bcenterH = bheight / 2
+        
+        clickables['reset'] = createButton(10, height - 20 - bheight, bwidth, bheight, "Reset" )
+        clickables['exit'] = createButton(centerX - bcenterX, height - 20 - bheight, bwidth, bheight, "Exit")
+        clickables['new'] = createButton(width - 10 - bwidth, height - 20 - bheight, bwidth, bheight, "New" )
+        
+        texte(centerX , height - 20 - bheight - 30, "you won", "green", "center")
+        global won
+        won = True
         print("you have won")
     else:
         print("no win yet")
 
-
-def getSommetSegments(sommet):
-        i, j = sommet
-        global indices
-
-        maxRow = len(indices)
-        maxColumn = len(indices[0])
-
-        candidates = [
-            ((i, j), (i, j + 1)),
-            ((i, j), (i + 1, j)),
-            ((i,j), (i, j - 1)),
-            ((i,j), (i - 1, j))
-        ]
-        if i == 0:
-            candidates.remove(((i,j), (i - 1, j)))
-        if i == maxRow:
-            candidates.remove(((i, j), (i + 1, j)))
-        
-        if j == 0:
-            candidates.remove(((i,j), (i, j - 1)))
-
-        if j == maxColumn:
-            candidates.remove(((i, j), (i, j + 1)))
-        candidates = [verifyTuplesOrder(candidate) for candidate in candidates]
-        return candidates
-            
-def VerifyLockedPremises():
-    global etat
-    global indices
-
-
-    allSegments = [segment for segment,status in etat.items() if status == 1]
-    if len(allSegments) == 0:
-        print("no lines")
-        return False
-    firstSegment = allSegments[0]
-    firstSommet = firstSegment[0]
-    res = thatFunc(previousSommet=firstSommet, segment=firstSegment, verifiedsegments=[], allSegments=allSegments)
-    print("res for verifylocked :" + str(res))
-    return res
-
-
-def verifyAllCasesGreen():
-    global indices
-    global etat
-    for i, val in enumerate(indices):
-        for j, case in enumerate(val):
-            if case == None:
-                continue
-            if statut_case(indices, etat, (i, j)) != 0:
-                print("case :" + str((i, j)) + " is not green")
-                return False
-    print("all cases green")
-    return True
-def thatFunc(previousSommet=(), segment=((), ()), verifiedsegments=[], allSegments=[]):
-    if segment in verifiedsegments:
-        print("lngth verfiedsegments = " + str(len(verifiedsegments)) + " all segments length = " + str(len(allSegments)))
-        if len(verifiedsegments) != len(allSegments):
-            print("lose end not included in premises")
-            return False
-        
-        return True
-
-    segment = verifyTuplesOrder(segment)
-    segmentList = list(segment)
-    segmentList.remove(previousSommet)
-    nextSommet = segmentList[0]
-    possibleSegments = getSommetSegments(nextSommet)
-
-    possibleSegments.remove(segment)
-    candidateSegments = possibleSegments
-    matchs = []
-    for candidate in candidateSegments:
-        res = etat.get(candidate, False)
-        if res == 1:
-            matchs.append(candidate)
-
-    if len(matchs) == 0:
-        print("premises not locked at " + str(nextSommet))
-        return False
-    elif len(matchs) > 1:
-        print("premises have loss ends")
-        return False
-    elif len(matchs) == 1:
-        print("perfect going for next segment")
-        verifiedsegments.append(segment)
-        return thatFunc(previousSommet=nextSommet, segment=matchs[0], verifiedsegments=verifiedsegments, allSegments=allSegments)
+def lireJeu(filename = ""):
+    global indices, height, width
+    with open(filename) as file:
+        lines = [line.rstrip('\n') for line in file]
+    print(lines)
+    
+    if len(list(set([len(line) for line in lines]))) != 1:
+        raise BaseException("lines length are not consistent")
 
     
+    if False in [True if re.match(r'^([0123_])+$', line) else False  for line in lines]:
+        raise BaseException("Invalid Characters detected")
+
+    indices = [[int(letter) if letter.isdigit() else None for letter in list(line)] for line in lines]
+    height = len(lines)
+    width = len(lines[0])
+    
+    pass
+
 def drawGrid():
     global indices
     global gameTexts
     global squareSide
     global distanceBetweenSquares
     global padding
-
+    global clickables
     row = len(indices)
     column = len(indices[0])
 
 
     
     width = row * (squareSide + distanceBetweenSquares) + padding  * 3
-    height = column * (squareSide + distanceBetweenSquares) + padding  * 3
+    height = column * (squareSide + distanceBetweenSquares) + padding  * 3 + 80
+
+    centerX = width / 2
+    bwidth = 150
+    bcenterX = bwidth / 2
+    bheight = 50
+    bcenterH = bheight / 2
     cree_fenetre(width , height)
+    clickables['solve'] = createButton(centerX - bcenterX, height - 20 - bheight, bwidth, bheight, "Solve" )
+    
     for i in range(0, row + 1):
         starty = padding + i * (squareSide + distanceBetweenSquares)
         endy = padding + i * (squareSide + distanceBetweenSquares) + squareSide
@@ -481,10 +561,14 @@ def drawGrid():
     mise_a_jour()
 def StartGame(grille):
     global view
+    global etat
+    etat = {}
     view = "game"
     #cree_fenetre(800, 800)
     lireJeu('./grilles/' + grille + ".txt")
     drawGrid()
+    global won
+    won = False
     
 def grilleScreen():
     global view
